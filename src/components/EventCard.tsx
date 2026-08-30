@@ -8,8 +8,17 @@ const formatTime = (t?: string) => {
 }
 
 export function EventCard({ event, profiles }: { event: CalendarEvent; profiles: Profile[] }) {
-  const names = event.participants.map(id => profiles.find(p => p.id === id)?.displayName ?? 'Unknown')
-  return <article className={`event-card ${event.participants.length > 1 ? 'both' : ''}`}>
+  const participantProfiles = event.participants
+    .map(id => profiles.find(p => p.id === id))
+    .filter(Boolean) as Profile[]
+  const names = participantProfiles.map(p => p.displayName)
+  const isShared = participantProfiles.length > 1
+  const accentColor = !isShared ? participantProfiles[0]?.color : undefined
+
+  return <article
+    className={`event-card ${isShared ? 'both' : ''}`}
+    style={accentColor ? { borderLeftColor: accentColor } : undefined}
+  >
     <div className="event-card-top"><strong>{event.title}</strong>{event.recurrence && event.recurrence !== 'none' && <Repeat2 size={16}/>}</div>
     <div className="event-time">{event.allDay ? 'All day' : `${formatTime(event.startTime)}–${formatTime(event.endTime)}`}</div>
     {event.location && <div className="event-meta"><MapPin size={14}/>{event.location}</div>}
