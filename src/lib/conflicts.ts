@@ -14,21 +14,15 @@ export const eventsOverlap = (a: CalendarEvent, b: CalendarEvent) => {
   return toMinutes(a.startTime) < toMinutes(b.endTime) && toMinutes(a.endTime) > toMinutes(b.startTime)
 }
 
-export const conflictsForCandidate = (
-  candidate: CalendarEvent,
-  events: CalendarEvent[],
-  actor: PersonId,
-) => {
+export const conflictsForCandidate = (candidate: CalendarEvent, events: CalendarEvent[], actor: PersonId) => {
   const own: CalendarEvent[] = []
   const partner: CalendarEvent[] = []
-  const partnerId: PersonId = actor === 'eric' ? 'ryan' : 'eric'
-
   for (const event of events) {
     if (event.id === candidate.id || !eventsOverlap(candidate, event)) continue
     if (candidate.participants.includes(actor) && event.participants.includes(actor)) own.push(event)
-    if (candidate.participants.includes(partnerId) && event.participants.includes(partnerId)) partner.push(event)
+    const sharedOthers = candidate.participants.filter(id => id !== actor && event.participants.includes(id))
+    if (sharedOthers.length) partner.push(event)
   }
-
   return { own, partner }
 }
 
@@ -39,11 +33,8 @@ export const allConflicts = (events: CalendarEvent[]): Conflict[] => {
       const a = events[i]
       const b = events[j]
       if (!eventsOverlap(a, b)) continue
-      for (const person of ['eric', 'ryan'] as PersonId[]) {
-        if (a.participants.includes(person) && b.participants.includes(person)) {
-          conflicts.push({ eventA: a, eventB: b, person })
-        }
-      }
+      const shared = a.participants.filter(person => b.participants.includes(person))
+      for (const person of shared) conflicts.push({ eventA: a, eventB: b, person })
     }
   }
   return conflicts
