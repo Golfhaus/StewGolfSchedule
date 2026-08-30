@@ -13,6 +13,8 @@ export type CalendarEvent = {
   date: string
   startTime?: string
   endTime?: string
+  rawStartAt?: string
+  rawEndAt?: string
   allDay: boolean
   blocksAllDay: boolean
   location?: string
