@@ -43,7 +43,7 @@ export async function getEvents(): Promise<CalendarEvent[]> {
   }))
 }
 
-export async function createEvent(event: CalendarEvent, overrideSelfConflict = false) {
+export async function createEvent(event: CalendarEvent, _householdId?: string, _actorId?: string) {
   const client = requireClient()
   const startsAt = event.allDay ? null : new Date(`${event.date}T${event.startTime}:00`).toISOString()
   const endsAt = event.allDay ? null : new Date(`${event.date}T${event.endTime}:00`).toISOString()
@@ -58,7 +58,7 @@ export async function createEvent(event: CalendarEvent, overrideSelfConflict = f
     p_blocks_all_day: event.blocksAllDay,
     p_recurrence_rule: event.recurrence === 'none' ? null : event.recurrence,
     p_participant_ids: event.participants,
-    p_override_self_conflict: overrideSelfConflict,
+    p_override_self_conflict: false,
   })
   if (error) throw error
   return data as string
