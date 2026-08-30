@@ -1,4 +1,11 @@
-export type PersonId = 'eric' | 'ryan'
+export type PersonId = string
+
+export type Profile = {
+  id: string
+  displayName: string
+  color: string
+  householdId: string | null
+}
 
 export type CalendarEvent = {
   id: string
@@ -12,6 +19,7 @@ export type CalendarEvent = {
   notes?: string
   participants: PersonId[]
   recurrence?: 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly'
+  createdBy?: string
 }
 
 export type Conflict = {
