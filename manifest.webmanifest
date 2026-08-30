@@ -2,8 +2,17 @@
   "name": "Together Calendar",
   "short_name": "Together",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#f8f9fd",
   "theme_color": "#172554",
-  "description": "A shared calendar that makes double-booking hard to miss."
+  "description": "A shared calendar that makes double-booking hard to miss.",
+  "icons": [
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }
