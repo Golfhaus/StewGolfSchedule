@@ -1,4 +1,4 @@
-const CACHE = 'together-shell-v1';
+const CACHE = 'together-shell-v2';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icons/together.svg'];
 
 self.addEventListener('install', event => {
