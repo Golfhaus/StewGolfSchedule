@@ -11,6 +11,15 @@ export const eventsOverlap = (a: CalendarEvent, b: CalendarEvent) => {
   if (a.allDay && !a.blocksAllDay) return false
   if (b.allDay && !b.blocksAllDay) return false
   if (a.allDay || b.allDay) return true
+
+  if (a.rawStartAt && a.rawEndAt && b.rawStartAt && b.rawEndAt) {
+    const aStart = new Date(a.rawStartAt).getTime()
+    const aEnd = new Date(a.rawEndAt).getTime()
+    const bStart = new Date(b.rawStartAt).getTime()
+    const bEnd = new Date(b.rawEndAt).getTime()
+    return aStart < bEnd && aEnd > bStart
+  }
+
   return toMinutes(a.startTime) < toMinutes(b.endTime) && toMinutes(a.endTime) > toMinutes(b.startTime)
 }
 
