@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CalendarDays, CheckCircle2, List, LogOut, Plus } from 'lucide-react'
-import { format, isAfter, parseISO } from 'date-fns'
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, List, LogOut, Plus } from 'lucide-react'
+import { addMonths, addWeeks, eachDayOfInterval, endOfMonth, endOfWeek, format, isAfter, isSameDay, isSameMonth, parseISO, startOfMonth, startOfWeek, subMonths, subWeeks } from 'date-fns'
 import { AuthScreen } from './components/AuthScreen'
 import { HouseholdSetup } from './components/HouseholdSetup'
 import { EventCard } from './components/EventCard'
@@ -11,6 +11,7 @@ import type { CalendarEvent, Profile } from './types'
 import './styles.css'
 
 type View = 'agenda'|'add'|'conflicts'|'calendar'
+type CalendarMode = 'month'|'week'
 const blankEvent = (actor: string): CalendarEvent => ({ id: crypto.randomUUID(), title:'', date:format(new Date(),'yyyy-MM-dd'), startTime:'18:00', endTime:'19:00', allDay:false, blocksAllDay:false, participants:[actor], recurrence:'none' })
 
 export default function App(){
@@ -25,6 +26,8 @@ export default function App(){
   const [checked,setChecked]=useState(false)
   const [override,setOverride]=useState(false)
   const [error,setError]=useState('')
+  const [calendarMode,setCalendarMode]=useState<CalendarMode>('month')
+  const [calendarDate,setCalendarDate]=useState(new Date())
 
   const reload=async()=>{
     try{
@@ -53,6 +56,15 @@ export default function App(){
   const candidate=draft&&me?conflictsForCandidate(draft,events,me.id):{own:[],partner:[]}
   const grouped=useMemo(()=>[...events].sort((a,b)=>`${a.date}${a.startTime??''}`.localeCompare(`${b.date}${b.startTime??''}`)).reduce<Record<string,CalendarEvent[]>>((acc,e)=>((acc[e.date]||=[]).push(e),acc),{}),[events])
   const nameFor=(id:string)=>profiles.find(p=>p.id===id)?.displayName??'Partner'
+  const eventsOnDay=(day:Date)=>events.filter(e=>e.date===format(day,'yyyy-MM-dd')).sort((a,b)=>(a.startTime??'').localeCompare(b.startTime??''))
+  const eventAccent=(event:CalendarEvent)=>{
+    const colors=event.participants.map(id=>profiles.find(p=>p.id===id)?.color).filter(Boolean) as string[]
+    if(colors.length>1)return `linear-gradient(90deg, ${colors[0]} 50%, ${colors[1]} 50%)`
+    return colors[0]??'#1E3A8A'
+  }
+  const monthDays=useMemo(()=>eachDayOfInterval({start:startOfWeek(startOfMonth(calendarDate)),end:endOfWeek(endOfMonth(calendarDate))}),[calendarDate])
+  const weekDays=useMemo(()=>eachDayOfInterval({start:startOfWeek(calendarDate),end:endOfWeek(calendarDate)}),[calendarDate])
+  const selectedDayEvents=eventsOnDay(calendarDate)
 
   if(!supabaseConfigured)return <main className="auth-shell"><section className="auth-card"><div className="eyebrow">Setup needed</div><h1>Connect Supabase</h1><p>Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your environment, then restart the app.</p></section></main>
   if(!sessionReady)return <main className="auth-shell"><section className="auth-card"><p>Loading…</p></section></main>
@@ -62,6 +74,8 @@ export default function App(){
   const beginAdd=()=>{setDraft(blankEvent(me.id));setChecked(false);setOverride(false);setView('add')}
   const save=async()=>{if(!draft||!me.householdId)return;await createEvent(draft,me.householdId,me.id);setDraft(null);setChecked(false);setOverride(false);setView('agenda');await reload()}
   const signOut=()=>supabase?.auth.signOut()
+  const moveCalendar=(direction:-1|1)=>setCalendarDate(current=>calendarMode==='month'?(direction===1?addMonths(current,1):subMonths(current,1)):(direction===1?addWeeks(current,1):subWeeks(current,1)))
+  const calendarTitle=calendarMode==='month'?format(calendarDate,'MMMM yyyy'):`${format(weekDays[0],'MMM d')} – ${format(weekDays[6],'MMM d')}`
 
   return <div className="app-shell">
     <header className="topbar"><div><div className="eyebrow">Together</div><h1>{view==='agenda'?`Hi, ${me.displayName}!`:view==='add'?'Add something':view==='conflicts'?'Conflicts':'Calendar'}</h1></div><button className="person-toggle" onClick={signOut}><LogOut size={18}/>Sign out</button></header>
@@ -86,7 +100,26 @@ export default function App(){
         </div>}
       </section>}
       {view==='conflicts'&&<section className="conflicts-list">{futureConflicts.length===0?<div className="empty"><CheckCircle2 size={42}/><h2>All clear</h2></div>:futureConflicts.map((c,i)=><article className="conflict-card" key={`${c.eventA.id}-${c.eventB.id}-${i}`}><span className="conflict-owner">{nameFor(c.person)} conflict</span><h2>{format(parseISO(c.eventA.date),'EEEE, MMM d')}</h2><strong>{c.eventA.title}</strong><span> overlaps </span><strong>{c.eventB.title}</strong></article>)}</section>}
-      {view==='calendar'&&<section className="placeholder"><CalendarDays size={48}/><h2>Week & month views</h2><p>Coming in the next slice.</p></section>}
+      {view==='calendar'&&<section className="calendar-view">
+        <div className="calendar-mode-toggle"><button className={calendarMode==='month'?'active':''} onClick={()=>setCalendarMode('month')}>Month</button><button className={calendarMode==='week'?'active':''} onClick={()=>setCalendarMode('week')}>Week</button></div>
+        <div className="calendar-toolbar"><button aria-label="Previous" onClick={()=>moveCalendar(-1)}><ChevronLeft/></button><h2>{calendarTitle}</h2><button aria-label="Next" onClick={()=>moveCalendar(1)}><ChevronRight/></button></div>
+        <button className="today-button" onClick={()=>setCalendarDate(new Date())}>Today</button>
+        {calendarMode==='month'?<>
+          <div className="weekday-row">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day=><span key={day}>{day}</span>)}</div>
+          <div className="month-grid">{monthDays.map(day=>{
+            const dayEvents=eventsOnDay(day)
+            const selected=isSameDay(day,calendarDate)
+            return <button key={day.toISOString()} className={`month-day ${!isSameMonth(day,calendarDate)?'outside ':''}${selected?'selected':''}`} onClick={()=>setCalendarDate(day)} aria-label={format(day,'EEEE, MMMM d')}>
+              <span className="day-number">{format(day,'d')}</span>
+              <span className="event-dots">{dayEvents.slice(0,4).map(event=><i key={event.id} style={{background:eventAccent(event)}}/>)}{dayEvents.length>4&&<small>+{dayEvents.length-4}</small>}</span>
+            </button>
+          })}</div>
+          <div className="selected-day"><h3>{format(calendarDate,'EEEE, MMMM d')}</h3>{selectedDayEvents.length?selectedDayEvents.map(event=><EventCard event={event} profiles={profiles} key={event.id}/>):<p>No events scheduled.</p>}</div>
+        </>:<div className="week-list">{weekDays.map(day=>{
+          const dayEvents=eventsOnDay(day)
+          return <section className={`week-day ${isSameDay(day,new Date())?'today':''}`} key={day.toISOString()}><div className="week-day-heading"><span>{format(day,'EEE')}</span><strong>{format(day,'d')}</strong></div><div className="week-day-events">{dayEvents.length?dayEvents.map(event=><EventCard event={event} profiles={profiles} key={event.id}/>):<span className="no-events">No events</span>}</div></section>
+        })}</div>}
+      </section>}
     </main>
     <button className="fab" onClick={beginAdd}><Plus/></button>
     <nav className="bottom-nav"><button className={view==='agenda'?'active':''} onClick={()=>setView('agenda')}><List/>Agenda</button><button className={view==='calendar'?'active':''} onClick={()=>setView('calendar')}><CalendarDays/>Calendar</button><button className={view==='conflicts'?'active':''} onClick={()=>setView('conflicts')}><AlertTriangle/>Conflicts</button></nav>
