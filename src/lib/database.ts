@@ -43,28 +43,25 @@ export async function getEvents(): Promise<CalendarEvent[]> {
   }))
 }
 
-export async function createEvent(event: CalendarEvent, householdId: string, actorId: string) {
+export async function createEvent(event: CalendarEvent, overrideSelfConflict = false) {
   const client = requireClient()
   const startsAt = event.allDay ? null : new Date(`${event.date}T${event.startTime}:00`).toISOString()
   const endsAt = event.allDay ? null : new Date(`${event.date}T${event.endTime}:00`).toISOString()
-  const { data, error } = await client.from('events').insert({
-    household_id: householdId,
-    title: event.title,
-    location: event.location || null,
-    notes: event.notes || null,
-    event_date: event.date,
-    starts_at: startsAt,
-    ends_at: endsAt,
-    all_day: event.allDay,
-    blocks_all_day: event.blocksAllDay,
-    recurrence_rule: event.recurrence === 'none' ? null : event.recurrence,
-    created_by: actorId,
-  }).select('id').single()
+  const { data, error } = await client.rpc('create_event_for_current_user', {
+    p_title: event.title,
+    p_location: event.location || null,
+    p_notes: event.notes || null,
+    p_event_date: event.date,
+    p_starts_at: startsAt,
+    p_ends_at: endsAt,
+    p_all_day: event.allDay,
+    p_blocks_all_day: event.blocksAllDay,
+    p_recurrence_rule: event.recurrence === 'none' ? null : event.recurrence,
+    p_participant_ids: event.participants,
+    p_override_self_conflict: overrideSelfConflict,
+  })
   if (error) throw error
-  const participants = event.participants.map(user_id => ({ event_id: data.id, user_id }))
-  const participantResult = await client.from('event_participants').insert(participants)
-  if (participantResult.error) throw participantResult.error
-  return data.id as string
+  return data as string
 }
 
 export async function createHousehold(displayName: string, color: string) {
