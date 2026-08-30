@@ -33,6 +33,8 @@ export async function getEvents(): Promise<CalendarEvent[]> {
     date: e.event_date,
     startTime: e.starts_at ? new Date(e.starts_at).toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit'}) : undefined,
     endTime: e.ends_at ? new Date(e.ends_at).toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit'}) : undefined,
+    rawStartAt: e.starts_at ?? undefined,
+    rawEndAt: e.ends_at ?? undefined,
     allDay: e.all_day,
     blocksAllDay: e.blocks_all_day,
     location: e.location ?? undefined,
