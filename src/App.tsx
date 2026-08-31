@@ -5,7 +5,7 @@ import { AuthScreen } from './components/AuthScreen'
 import { HouseholdSetup } from './components/HouseholdSetup'
 import { EventCard } from './components/EventCard'
 import { allConflicts, conflictsForCandidate } from './lib/conflicts'
-import { createEvent, getEvents, getHouseholdProfiles, getInviteCode, getMyProfile } from './lib/database'
+import { addMeToEvent, createEvent, deleteEvent, getEvents, getHouseholdProfiles, getInviteCode, getMyProfile } from './lib/database'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import type { CalendarEvent, Profile } from './types'
 import './styles.css'
@@ -28,6 +28,7 @@ export default function App(){
   const [error,setError]=useState('')
   const [calendarMode,setCalendarMode]=useState<CalendarMode>('month')
   const [calendarDate,setCalendarDate]=useState(new Date())
+  const [busyEventId,setBusyEventId]=useState<string|null>(null)
 
   const reload=async()=>{
     try{
@@ -76,6 +77,22 @@ export default function App(){
   const signOut=()=>supabase?.auth.signOut()
   const moveCalendar=(direction:-1|1)=>setCalendarDate(current=>calendarMode==='month'?(direction===1?addMonths(current,1):subMonths(current,1)):(direction===1?addWeeks(current,1):subWeeks(current,1)))
   const calendarTitle=calendarMode==='month'?format(calendarDate,'MMMM yyyy'):`${format(weekDays[0],'MMM d')} – ${format(weekDays[6],'MMM d')}`
+  const handleDelete=async(event:CalendarEvent)=>{
+    if(!window.confirm(`Delete “${event.title}”? This removes it for both of you.`))return
+    setError('');setBusyEventId(event.id)
+    try{await deleteEvent(event.id);await reload()}
+    catch(e:any){setError(e.message??'Unable to delete event')}
+    finally{setBusyEventId(null)}
+  }
+  const handleAddMe=async(event:CalendarEvent)=>{
+    setError('');setBusyEventId(event.id)
+    try{await addMeToEvent(event.id);await reload()}
+    catch(e:any){
+      const message=String(e?.message??'')
+      setError(message.includes('SELF_CONFLICT')?'You already have something that conflicts with this event, so you were not added.':message||'Unable to join event')
+    }finally{setBusyEventId(null)}
+  }
+  const cardFor=(event:CalendarEvent)=><EventCard event={event} profiles={profiles} currentUserId={me.id} busy={busyEventId===event.id} onDelete={handleDelete} onAddMe={handleAddMe} key={event.id}/>
 
   return <div className="app-shell">
     <header className="topbar"><div><div className="eyebrow">Together</div><h1>{view==='agenda'?`Hi, ${me.displayName}!`:view==='add'?'Add something':view==='conflicts'?'Conflicts':'Calendar'}</h1></div><button className="person-toggle" onClick={signOut}><LogOut size={18}/>Sign out</button></header>
@@ -84,7 +101,7 @@ export default function App(){
       {view==='agenda'&&<>
         {profiles.length<2&&inviteCode&&<div className="invite-banner"><strong>Invite your partner</strong><span>Share this code: <b>{inviteCode}</b></span></div>}
         {futureConflicts.length?<button className="conflict-banner" onClick={()=>setView('conflicts')}><AlertTriangle size={24}/><span><strong>{futureConflicts.length} conflict{futureConflicts.length===1?'':'s'} need attention</strong><small>Earliest: {format(parseISO(futureConflicts[0].eventA.date),'MMM d')}</small></span><span>Review →</span></button>:<div className="clear-banner"><CheckCircle2 size={20}/> No unresolved conflicts</div>}
-        <section className="agenda-list">{Object.entries(grouped).map(([date,dayEvents])=><div className="day-group" key={date}><h2>{format(parseISO(date),'EEEE, MMMM d')}</h2>{dayEvents.map(event=><EventCard event={event} profiles={profiles} key={event.id}/>)}</div>)}</section>
+        <section className="agenda-list">{Object.entries(grouped).map(([date,dayEvents])=><div className="day-group" key={date}><h2>{format(parseISO(date),'EEEE, MMMM d')}</h2>{dayEvents.map(cardFor)}</div>)}</section>
       </>}
       {view==='add'&&draft&&<section className="form-card"><p className="step-label">1 · When is it?</p>
         <label>Date<input type="date" value={draft.date} onChange={e=>{setDraft({...draft,date:e.target.value});setChecked(false)}}/></label>
@@ -114,10 +131,10 @@ export default function App(){
               <span className="event-dots">{dayEvents.slice(0,4).map(event=><i key={event.id} style={{background:eventAccent(event)}}/>)}{dayEvents.length>4&&<small>+{dayEvents.length-4}</small>}</span>
             </button>
           })}</div>
-          <div className="selected-day"><h3>{format(calendarDate,'EEEE, MMMM d')}</h3>{selectedDayEvents.length?selectedDayEvents.map(event=><EventCard event={event} profiles={profiles} key={event.id}/>):<p>No events scheduled.</p>}</div>
+          <div className="selected-day"><h3>{format(calendarDate,'EEEE, MMMM d')}</h3>{selectedDayEvents.length?selectedDayEvents.map(cardFor):<p>No events scheduled.</p>}</div>
         </>:<div className="week-list">{weekDays.map(day=>{
           const dayEvents=eventsOnDay(day)
-          return <section className={`week-day ${isSameDay(day,new Date())?'today':''}`} key={day.toISOString()}><div className="week-day-heading"><span>{format(day,'EEE')}</span><strong>{format(day,'d')}</strong></div><div className="week-day-events">{dayEvents.length?dayEvents.map(event=><EventCard event={event} profiles={profiles} key={event.id}/>):<span className="no-events">No events</span>}</div></section>
+          return <section className={`week-day ${isSameDay(day,new Date())?'today':''}`} key={day.toISOString()}><div className="week-day-heading"><span>{format(day,'EEE')}</span><strong>{format(day,'d')}</strong></div><div className="week-day-events">{dayEvents.length?dayEvents.map(cardFor):<span className="no-events">No events</span>}</div></section>
         })}</div>}
       </section>}
     </main>
