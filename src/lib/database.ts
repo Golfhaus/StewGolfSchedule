@@ -74,11 +74,8 @@ export async function deleteEvent(eventId: string) {
 
 export async function addMeToEvent(eventId: string) {
   const client = requireClient()
-  const { data: { user }, error: authError } = await client.auth.getUser()
-  if (authError) throw authError
-  if (!user) throw new Error('You are not signed in')
-  const { error } = await client.from('event_participants').insert({ event_id: eventId, user_id: user.id })
-  if (error && error.code !== '23505') throw error
+  const { error } = await client.rpc('add_current_user_to_event', { p_event_id: eventId })
+  if (error) throw error
 }
 
 export async function createHousehold(displayName: string, color: string) {
