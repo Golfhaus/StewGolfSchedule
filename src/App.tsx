@@ -55,7 +55,10 @@ export default function App(){
 
   const futureConflicts=useMemo(()=>allConflicts(events).filter(c=>!isAfter(new Date(),parseISO(`${c.eventA.date}T23:59:59`))),[events])
   const candidate=draft&&me?conflictsForCandidate(draft,events,me.id):{own:[],partner:[]}
-  const grouped=useMemo(()=>[...events].sort((a,b)=>`${a.date}${a.startTime??''}`.localeCompare(`${b.date}${b.startTime??''}`)).reduce<Record<string,CalendarEvent[]>>((acc,e)=>((acc[e.date]||=[]).push(e),acc),{}),[events])
+  const grouped=useMemo(()=>{
+    const today=format(new Date(),'yyyy-MM-dd')
+    return [...events].filter(e=>e.date>=today).sort((a,b)=>`${a.date}${a.startTime??''}`.localeCompare(`${b.date}${b.startTime??''}`)).reduce<Record<string,CalendarEvent[]>>((acc,e)=>((acc[e.date]||=[]).push(e),acc),{})
+  },[events])
   const nameFor=(id:string)=>profiles.find(p=>p.id===id)?.displayName??'Partner'
   const eventsOnDay=(day:Date)=>events.filter(e=>e.date===format(day,'yyyy-MM-dd')).sort((a,b)=>(a.startTime??'').localeCompare(b.startTime??''))
   const eventAccent=(event:CalendarEvent)=>{
