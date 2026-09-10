@@ -38,7 +38,7 @@ export function EventCard({ event, profiles, currentUserId, busy = false, onEdit
     {event.location && <div className="event-meta"><MapPin size={14}/>{event.location}</div>}
     <div className="event-meta"><Users size={14}/>{names.join(' + ')}</div>
     <div className="event-actions">
-      <button type="button" className="event-action edit-event" disabled={busy} onClick={()=>onEdit(event)}><Pencil size={16}/>Edit</button>
+      {isMine&&<button type="button" className="event-action edit-event" disabled={busy} onClick={()=>onEdit(event)}><Pencil size={16}/>Edit</button>}
       {!isMine&&<button type="button" className="event-action add-me" disabled={busy} onClick={()=>onAddMe(event)}><Plus size={16}/>Add me</button>}
       <button type="button" className="event-action delete-event" disabled={busy} onClick={()=>onDelete(event)}><Trash2 size={16}/>Delete</button>
     </div>
