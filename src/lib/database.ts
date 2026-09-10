@@ -45,25 +45,34 @@ export async function getEvents(): Promise<CalendarEvent[]> {
   }))
 }
 
-export async function createEvent(event: CalendarEvent, _householdId?: string, _actorId?: string) {
+const eventRpcPayload = (event: CalendarEvent, overrideSelfConflict = false) => ({
+  p_title: event.title,
+  p_location: event.location || null,
+  p_notes: event.notes || null,
+  p_event_date: event.date,
+  p_starts_at: event.allDay ? null : new Date(`${event.date}T${event.startTime}:00`).toISOString(),
+  p_ends_at: event.allDay ? null : new Date(`${event.date}T${event.endTime}:00`).toISOString(),
+  p_all_day: event.allDay,
+  p_blocks_all_day: event.blocksAllDay,
+  p_recurrence_rule: event.recurrence === 'none' ? null : event.recurrence,
+  p_participant_ids: event.participants,
+  p_override_self_conflict: overrideSelfConflict,
+})
+
+export async function createEvent(event: CalendarEvent, _householdId?: string, _actorId?: string, overrideSelfConflict = false) {
   const client = requireClient()
-  const startsAt = event.allDay ? null : new Date(`${event.date}T${event.startTime}:00`).toISOString()
-  const endsAt = event.allDay ? null : new Date(`${event.date}T${event.endTime}:00`).toISOString()
-  const { data, error } = await client.rpc('create_event_for_current_user', {
-    p_title: event.title,
-    p_location: event.location || null,
-    p_notes: event.notes || null,
-    p_event_date: event.date,
-    p_starts_at: startsAt,
-    p_ends_at: endsAt,
-    p_all_day: event.allDay,
-    p_blocks_all_day: event.blocksAllDay,
-    p_recurrence_rule: event.recurrence === 'none' ? null : event.recurrence,
-    p_participant_ids: event.participants,
-    p_override_self_conflict: false,
-  })
+  const { data, error } = await client.rpc('create_event_for_current_user', eventRpcPayload(event, overrideSelfConflict))
   if (error) throw error
   return data as string
+}
+
+export async function updateEvent(event: CalendarEvent, overrideSelfConflict = false) {
+  const client = requireClient()
+  const { error } = await client.rpc('update_event_for_current_user', {
+    p_event_id: event.id,
+    ...eventRpcPayload(event, overrideSelfConflict),
+  })
+  if (error) throw error
 }
 
 export async function deleteEvent(eventId: string) {
