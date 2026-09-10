@@ -5,13 +5,14 @@ import { AuthScreen } from './components/AuthScreen'
 import { HouseholdSetup } from './components/HouseholdSetup'
 import { EventCard } from './components/EventCard'
 import { allConflicts, conflictsForCandidate } from './lib/conflicts'
-import { addMeToEvent, createEvent, deleteEvent, getEvents, getHouseholdProfiles, getInviteCode, getMyProfile } from './lib/database'
+import { addMeToEvent, createEvent, deleteEvent, getEvents, getHouseholdProfiles, getInviteCode, getMyProfile, updateEvent } from './lib/database'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import type { CalendarEvent, Profile } from './types'
 import './styles.css'
 
 type View = 'agenda'|'add'|'conflicts'|'calendar'
 type CalendarMode = 'month'|'week'
+type EventListView = 'agenda'|'calendar'
 const blankEvent = (actor: string): CalendarEvent => ({ id: crypto.randomUUID(), title:'', date:format(new Date(),'yyyy-MM-dd'), startTime:'18:00', endTime:'19:00', allDay:false, blocksAllDay:false, participants:[actor], recurrence:'none' })
 
 export default function App(){
@@ -29,6 +30,8 @@ export default function App(){
   const [calendarMode,setCalendarMode]=useState<CalendarMode>('month')
   const [calendarDate,setCalendarDate]=useState(new Date())
   const [busyEventId,setBusyEventId]=useState<string|null>(null)
+  const [editingEventId,setEditingEventId]=useState<string|null>(null)
+  const [editReturnView,setEditReturnView]=useState<EventListView>('agenda')
 
   const reload=async()=>{
     try{
@@ -54,7 +57,8 @@ export default function App(){
   },[me?.householdId])
 
   const futureConflicts=useMemo(()=>allConflicts(events).filter(c=>!isAfter(new Date(),parseISO(`${c.eventA.date}T23:59:59`))),[events])
-  const candidate=draft&&me?conflictsForCandidate(draft,events,me.id):{own:[],partner:[]}
+  const conflictEvents=editingEventId?events.filter(e=>e.id!==editingEventId):events
+  const candidate=draft&&me?conflictsForCandidate(draft,conflictEvents,me.id):{own:[],partner:[]}
   const grouped=useMemo(()=>{
     const today=format(new Date(),'yyyy-MM-dd')
     return [...events].filter(e=>e.date>=today).sort((a,b)=>`${a.date}${a.startTime??''}`.localeCompare(`${b.date}${b.startTime??''}`)).reduce<Record<string,CalendarEvent[]>>((acc,e)=>((acc[e.date]||=[]).push(e),acc),{})
@@ -75,8 +79,31 @@ export default function App(){
   if(!signedIn)return <AuthScreen/>
   if(!me?.householdId)return <HouseholdSetup onDone={reload}/>
 
-  const beginAdd=()=>{setDraft(blankEvent(me.id));setChecked(false);setOverride(false);setView('add')}
-  const save=async()=>{if(!draft||!me.householdId)return;await createEvent(draft,me.householdId,me.id);setDraft(null);setChecked(false);setOverride(false);setView('agenda');await reload()}
+  const beginAdd=()=>{setEditingEventId(null);setDraft(blankEvent(me.id));setChecked(false);setOverride(false);setError('');setView('add')}
+  const beginEdit=(event:CalendarEvent)=>{
+    setEditingEventId(event.id)
+    setEditReturnView(view==='calendar'?'calendar':'agenda')
+    setDraft({...event,participants:[...event.participants]})
+    setChecked(true)
+    setOverride(false)
+    setError('')
+    setView('add')
+  }
+  const cancelEdit=()=>{setDraft(null);setChecked(false);setOverride(false);setEditingEventId(null);setError('');setView(editReturnView)}
+  const save=async()=>{
+    if(!draft||!me.householdId)return
+    setError('');setBusyEventId(draft.id)
+    try{
+      if(editingEventId)await updateEvent(draft,override)
+      else await createEvent(draft,me.householdId,me.id,override)
+      const destination:View=editingEventId?editReturnView:'agenda'
+      setDraft(null);setChecked(false);setOverride(false);setEditingEventId(null);setView(destination);await reload()
+    }catch(e:any){
+      const message=String(e?.message??'')
+      if(message.includes('SELF_CONFLICT')){setChecked(true);setOverride(false);setError('That change conflicts with another event on your schedule. Review the conflict below.')}
+      else setError(message||`Unable to ${editingEventId?'update':'add'} event`)
+    }finally{setBusyEventId(null)}
+  }
   const signOut=()=>supabase?.auth.signOut()
   const moveCalendar=(direction:-1|1)=>setCalendarDate(current=>calendarMode==='month'?(direction===1?addMonths(current,1):subMonths(current,1)):(direction===1?addWeeks(current,1):subWeeks(current,1)))
   const calendarTitle=calendarMode==='month'?format(calendarDate,'MMMM yyyy'):`${format(weekDays[0],'MMM d')} – ${format(weekDays[6],'MMM d')}`
@@ -95,10 +122,10 @@ export default function App(){
       setError(message.includes('SELF_CONFLICT')?'You already have something that conflicts with this event, so you were not added.':message||'Unable to join event')
     }finally{setBusyEventId(null)}
   }
-  const cardFor=(event:CalendarEvent)=><EventCard event={event} profiles={profiles} currentUserId={me.id} busy={busyEventId===event.id} onDelete={handleDelete} onAddMe={handleAddMe} key={event.id}/>
+  const cardFor=(event:CalendarEvent)=><EventCard event={event} profiles={profiles} currentUserId={me.id} busy={busyEventId===event.id} onEdit={beginEdit} onDelete={handleDelete} onAddMe={handleAddMe} key={event.id}/>
 
   return <div className="app-shell">
-    <header className="topbar"><div><div className="eyebrow">Together</div><h1>{view==='agenda'?`Hi, ${me.displayName}!`:view==='add'?'Add something':view==='conflicts'?'Conflicts':'Calendar'}</h1></div><button className="person-toggle" onClick={signOut}><LogOut size={18}/>Sign out</button></header>
+    <header className="topbar"><div><div className="eyebrow">Together</div><h1>{view==='agenda'?`Hi, ${me.displayName}!`:view==='add'?(editingEventId?'Edit appointment':'Add something'):view==='conflicts'?'Conflicts':'Calendar'}</h1></div><button className="person-toggle" onClick={signOut}><LogOut size={18}/>Sign out</button></header>
     {error&&<div className="auth-message error">{error}</div>}
     <main>
       {view==='agenda'&&<>
@@ -112,11 +139,11 @@ export default function App(){
         {!draft.allDay&&<div className="time-grid"><label>Start<input type="time" value={draft.startTime} onChange={e=>{setDraft({...draft,startTime:e.target.value});setChecked(false)}}/></label><label>End<input type="time" value={draft.endTime} onChange={e=>{setDraft({...draft,endTime:e.target.value});setChecked(false)}}/></label></div>}
         {draft.allDay&&<label className="check-row"><input type="checkbox" checked={draft.blocksAllDay} onChange={e=>setDraft({...draft,blocksAllDay:e.target.checked})}/> Treat participant(s) as busy all day</label>}
         <div className="participant-pills">{profiles.map(p=><button key={p.id} type="button" className={draft.participants.includes(p.id)?'pill active':'pill'} onClick={()=>setDraft({...draft,participants:draft.participants.includes(p.id)?draft.participants.filter(x=>x!==p.id):[...draft.participants,p.id]})}>{p.displayName}</button>)}</div>
-        <button className="primary" disabled={!draft.participants.length} onClick={()=>setChecked(true)}>Check schedule</button>
+        {!checked&&<button className="primary" disabled={!draft.participants.length} onClick={()=>setChecked(true)}>Check schedule</button>}
         {checked&&<div className="schedule-result">{candidate.own.length?<div className="own-conflict"><AlertTriangle/><div><strong>You already have something then.</strong>{candidate.own.map(e=><div key={e.id}>{e.title}</div>)}</div></div>:<div className="okay"><CheckCircle2/> No conflict on your schedule.</div>}
           {candidate.partner.length>0&&<div className="partner-note"><strong>Your partner is already booked:</strong> {candidate.partner.map(e=>e.title).join(', ')}</div>}
-          {(candidate.own.length===0||override)&&<div className="details"><p className="step-label">2 · What is it?</p><label>Title<input value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})}/></label><label>Location<input value={draft.location??''} onChange={e=>setDraft({...draft,location:e.target.value})}/></label><label>Repeats<select value={draft.recurrence} onChange={e=>setDraft({...draft,recurrence:e.target.value as CalendarEvent['recurrence']})}><option value="none">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">Every 2 weeks</option><option value="monthly">Monthly</option></select></label><button className="primary" disabled={!draft.title.trim()} onClick={save}>Add event</button></div>}
-          {candidate.own.length>0&&!override&&<div className="override-box"><p>This conflict will stay visible until the schedule is fixed.</p><button className="danger" onClick={()=>setOverride(true)}>Add anyway — I'll resolve it later</button></div>}
+          {(candidate.own.length===0||override)&&<div className="details"><p className="step-label">2 · What is it?</p><label>Title<input value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})}/></label><label>Location<input value={draft.location??''} onChange={e=>setDraft({...draft,location:e.target.value})}/></label><label>Repeats<select value={draft.recurrence} onChange={e=>setDraft({...draft,recurrence:e.target.value as CalendarEvent['recurrence']})}><option value="none">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">Every 2 weeks</option><option value="monthly">Monthly</option></select></label><button className="primary" disabled={!draft.title.trim()||busyEventId===draft.id} onClick={save}>{editingEventId?'Save changes':'Add event'}</button>{editingEventId&&<button type="button" className="text-button" onClick={cancelEdit}>Cancel</button>}</div>}
+          {candidate.own.length>0&&!override&&<div className="override-box"><p>This conflict will stay visible until the schedule is fixed.</p><button className="danger" onClick={()=>setOverride(true)}>{editingEventId?'Save anyway — I’ll resolve it later':'Add anyway — I’ll resolve it later'}</button>{editingEventId&&<button type="button" className="text-button" onClick={cancelEdit}>Cancel</button>}</div>}
         </div>}
       </section>}
       {view==='conflicts'&&<section className="conflicts-list">{futureConflicts.length===0?<div className="empty"><CheckCircle2 size={42}/><h2>All clear</h2></div>:futureConflicts.map((c,i)=><article className="conflict-card" key={`${c.eventA.id}-${c.eventB.id}-${i}`}><span className="conflict-owner">{nameFor(c.person)} conflict</span><h2>{format(parseISO(c.eventA.date),'EEEE, MMM d')}</h2><strong>{c.eventA.title}</strong><span> overlaps </span><strong>{c.eventB.title}</strong></article>)}</section>}
